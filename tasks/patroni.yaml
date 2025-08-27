@@ -1,6 +1,7 @@
 ---
-# Preflight: validate cluster/inventory variables for Patroni
+# Patroni: preflight checks, repo setup, packages, config and service
 
+# -------- Preflight: basic variables are sane
 - name: Preflight | Validate required variables (Patroni)
   ansible.builtin.assert:
     that:
@@ -28,7 +29,9 @@
       Please review vars.yaml.
     success_msg: Patroni variables look sane.
 
+# -------- Optional: validate chosen bind interface and compute patroni_ip
 - name: Preflight | Validate chosen Patroni bind interface exists
+  when: patroni_bind_interface is defined
   vars:
     _if_key: "{{ 'ansible_' ~ patroni_bind_interface }}"
     _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
@@ -42,20 +45,19 @@
       }}
   ansible.builtin.assert:
     that:
-      - patroni_bind_interface is string
       - ansible_facts.interfaces is defined
       - patroni_bind_interface in ansible_facts.interfaces
       - _if is mapping
       - (_ipv4_from_obj is defined) or (_ipv4_from_addrs is defined)
     fail_msg: >
       Patroni bind interface {{ patroni_bind_interface }} not found or has no IPv4.
-      Check the interface name (e.g. enp1s0) and ensure facts are gathered.
+      Check interface name and ensure facts are gathered.
     success_msg: >-
       Patroni will bind on {{ patroni_bind_interface }}
       ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
 
-# Compute the final IPv4 and expose it as host fact (overrides vars.yaml)
-- name: Compute Patroni bind IP from interface facts
+- name: Compute Patroni bind address (patroni_ip)
+  when: patroni_bind_interface is defined
   vars:
     _if_key: "{{ 'ansible_' ~ patroni_bind_interface }}"
     _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
@@ -72,9 +74,7 @@
       {{
         ( _ipv4_from_obj
           if (_ipv4_from_obj is defined)
-          else (_ipv4_from_addrs
-                  if (_ipv4_from_addrs is defined)
-                  else ansible_default_ipv4.address) )
+          else (_ipv4_from_addrs) )
       }}
 
 - name: Preflight | Each DB host has a valid ansible_host IPv4
@@ -86,7 +86,7 @@
     success_msg: "Host {{ item }} has a valid 'ansible_host'."
   loop: "{{ groups['db'] | default([]) }}"
 
-# Install PostgreSQL packages from PGDG (newer than distro), then Patroni
+# -------- PGDG repository and packages
 - name: Apt | Install PGDG key
   ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
@@ -125,7 +125,7 @@
     name: "{{ db_packages }}"
     state: present
 
-# Ensure distro postgres service is not fighting Patroni
+# -------- Stop distro postgres service (Patroni manages postgres)
 - name: Disable distro PostgreSQL service (Patroni manages Postgres)
   ansible.builtin.service:
     name: postgresql
@@ -133,7 +133,7 @@
     enabled: false
   failed_when: false
 
-# Filesystem layout Patroni expects
+# -------- Directories
 - name: Create Patroni/Postgres directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -147,10 +147,10 @@
     - { path: "/var/lib/postgresql/raft" }
     - { path: "/var/run/postgresql", mode: "2775" }
 
-# Drop Patroni config and unit, then start it
+# -------- Templates and service
 - name: Deploy Patroni configuration
   ansible.builtin.template:
-    src: patroni.yml.j2
+    src: templates/patroni.yml.j2
     dest: /etc/patroni/patroni.yml
     owner: postgres
     group: postgres
@@ -159,7 +159,7 @@
 
 - name: Deploy systemd unit for Patroni
   ansible.builtin.template:
-    src: patroni.service.j2
+    src: templates/patroni.service.j2
     dest: /etc/systemd/system/patroni.service
     owner: root
     group: root

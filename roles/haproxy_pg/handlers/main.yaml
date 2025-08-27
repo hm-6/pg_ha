@@ -1,6 +1,0 @@
----
-# Soft reload HAProxy to apply new config without dropping connections
-- name: Reload haproxy
-  ansible.builtin.service:
-    name: haproxy
-    state: reloaded

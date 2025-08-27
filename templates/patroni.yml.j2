@@ -1,16 +1,12 @@
-# Main Patroni config rendered from inventory + vars
-
 scope: "{{ pg_cluster_scope }}"
 namespace: "{{ pg_namespace }}"
 name: "{{ patroni_name }}"
 
 restapi:
-  # Patroni HTTP API for health/role
-  listen: "{{ patroni_listen_address }}:{{ patroni_rest_port }}"
+  listen: "0.0.0.0:{{ patroni_rest_port }}"
   connect_address: "{{ patroni_ip }}:{{ patroni_rest_port }}"
 
 raft:
-  # Built-in DCS: store RAFT state locally; no etcd/consul needed
   data_dir: /var/lib/postgresql/raft
   self_addr: "{{ patroni_ip }}:{{ patroni_raft_port }}"
   partner_addrs:
@@ -20,7 +16,6 @@ raft:
 
 bootstrap:
   dcs:
-    # Cluster-wide defaults written once at bootstrap
     ttl: {{ patroni_dcs.ttl }}
     loop_wait: {{ patroni_dcs.loop_wait }}
     retry_timeout: {{ patroni_dcs.retry_timeout }}
@@ -29,7 +24,6 @@ bootstrap:
     synchronous_node_count: {{ patroni_dcs.synchronous_node_count }}
     postgresql:
       parameters:
-        # Server params enforced by Patroni
         max_connections: {{ patroni_dcs.postgresql.parameters.max_connections }}
         shared_buffers: "{{ patroni_dcs.postgresql.parameters.shared_buffers }}"
         wal_level: "{{ patroni_dcs.postgresql.parameters.wal_level }}"
@@ -39,11 +33,9 @@ bootstrap:
         max_replication_slots: {{ patroni_dcs.postgresql.parameters.max_replication_slots }}
         wal_keep_size: "{{ patroni_dcs.postgresql.parameters.wal_keep_size }}"
   initdb:
-    # Initialized on first bootstrap
     - encoding: UTF8
     - data-checksums
   pg_hba:
-    # Liberal pg_hba at bootstrap; tightened below in runtime section
     - "local   all             all                               peer"
     - "host    all             all           127.0.0.1/32        md5"
     - "host    all             all           ::1/128             md5"
@@ -52,8 +44,7 @@ bootstrap:
     - "host    all             all           {{ pg_cluster_cidr }}    md5"
 
 postgresql:
-  # Runtime connection & data layout
-  listen: "{{ patroni_listen_address }}:{{ postgres_port }}"
+  listen: "0.0.0.0:{{ postgres_port }}"
   connect_address: "{{ patroni_ip }}:{{ postgres_port }}"
   data_dir: "/var/lib/postgresql/{{ pg_version }}/patroni"
   bin_dir: "/usr/lib/postgresql/{{ pg_version }}/bin"
@@ -65,10 +56,8 @@ postgresql:
       username: "{{ pg_superuser.username }}"
       password: "{{ pg_superuser.password }}"
   parameters:
-    # Place the Postgres socket where clients expect it on Debian/Ubuntu
     unix_socket_directories: '/var/run/postgresql'
   pg_hba:
-    # Runtime pg_hba (auth differs for localhost vs LAN)
     - "local   all             all                                   trust"
     - "host    all             all                127.0.0.1/32       trust"
     - "host    all             all                ::1/128            trust"
@@ -78,7 +67,6 @@ postgresql:
     - "host    all             all                                   {{ pg_cluster_cidr }}   md5"
 
 tags:
-  # Defaults: allow failover and load-balancing
   nofailover: false
   noloadbalance: false
   clonefrom: false

@@ -1,23 +1,47 @@
 ---
-# Main playbook: deploy Patroni cluster nodes and HAProxy + monitoring
+# Main playbook: deploy Patroni cluster nodes, HAProxy and Checkmk (no roles)
 
-# 1) Database nodes: install Postgres from PGDG, Patroni, bootstrap cluster
 - name: DB nodes (PostgreSQL + Patroni)
   hosts: db
   become: true
-  roles:
-    - patroni
+  gather_facts: true
 
-# 2) HAProxy on the same nodes (or separate group later): route R/W traffic
-- name: HAProxy + Monitoring
+  handlers:
+    - name: Systemd daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart patroni
+      ansible.builtin.service:
+        name: patroni
+        state: restarted
+
+  tasks:
+    - name: Include Patroni tasks
+      ansible.builtin.import_tasks: tasks/patroni.yaml
+
+
+- name: HAProxy
   hosts: haproxy
   become: true
-  roles:
-    - haproxy_pg
+  gather_facts: true
 
-# 3) Checkmk local check deployed on HAProxy nodes to expose health to agent
+  handlers:
+    - name: Reload haproxy
+      ansible.builtin.service:
+        name: haproxy
+        state: reloaded
+
+  tasks:
+    - name: Include HAProxy tasks
+      ansible.builtin.import_tasks: tasks/haproxy.yaml
+
+
 - name: Monitoring (Checkmk local check)
   hosts: haproxy
   become: true
-  roles:
-    - checkmk_pg
+  gather_facts: true
+
+  tasks:
+    - name: Include Checkmk tasks
+      ansible.builtin.import_tasks: tasks/checkmk.yaml

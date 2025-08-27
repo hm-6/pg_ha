@@ -1,5 +1,4 @@
 global
-  # Standard syslog setup + master-worker + simple chroot
   log /dev/log local0
   log /dev/log local1 notice
   chroot /var/lib/haproxy
@@ -12,17 +11,15 @@ global
   maxconn 4096
 
 defaults
-  # Pure TCP for Postgres traffic
   mode tcp
   log global
   option tcplog
   timeout connect 5s
   timeout client  1m
   timeout server  1m
-  # Health checks tuned for Patroni REST health endpoints
   default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
 
-# Writes -> leader (verified via /master endpoint)
+# Writes -> leader
 frontend pg_write
   bind {{ haproxy_bind_address }}:{{ haproxy_write_port }}
   default_backend pg_leader
@@ -35,7 +32,7 @@ backend pg_leader
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
 {% endfor %}
 
-# Reads -> replicas (verified via /replica endpoint)
+# Reads -> replicas
 frontend pg_read
   bind {{ haproxy_bind_address }}:{{ haproxy_read_port }}
   default_backend pg_replicas
@@ -49,9 +46,9 @@ backend pg_replicas
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
 {% endfor %}
 
-# Simple built-in HAProxy stats page (no auth in lab setups)
+# simple HTTP stats
 listen stats
-bind {{ haproxy_bind_address }}:{{ haproxy_stats_port }}
+  bind {{ haproxy_bind_address }}:{{ haproxy_stats_port }}
   mode http
   option httplog
   stats enable

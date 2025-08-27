@@ -1,5 +1,7 @@
 ---
-# Preflight: validate HAProxy-related variables (fail early if wrong)
+# HAProxy: preflight, compute bind address, packages, config, service
+
+# -------- Preflight: basic variables are sane
 - name: Preflight | Validate required variables (HAProxy)
   ansible.builtin.assert:
     that:
@@ -18,7 +20,7 @@
       HAProxy variables are missing/invalid. Check ports and socket paths in vars.yaml.
     success_msg: HAProxy variables look sane.
 
-# Prüfe, dass das gewünschte Interface existiert und eine IPv4 hat (falls gesetzt)
+# -------- Optional: validate chosen bind interface and compute haproxy_bind_address
 - name: Preflight | Validate chosen HAProxy bind interface exists
   when: haproxy_bind_interface is defined
   vars:
@@ -45,7 +47,6 @@
       HAProxy will bind on {{ haproxy_bind_interface }}
       ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
 
-# Ermittele die Bind-Adresse und stelle sie als Fact bereit (fällt auf Default-IPv4 zurück)
 - name: Compute HAProxy bind address
   vars:
     _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
@@ -68,17 +69,17 @@
                   else ansible_default_ipv4.address) )
       }}
 
-# Install HAProxy + helper tools, deploy configuration, and enable service
+# -------- Packages
 - name: Packages | HAProxy and tools
   ansible.builtin.apt:
     name: "{{ haproxy_packages + common_packages }}"
     state: present
     update_cache: true
 
-# Validate configuration syntax server-side before applying
+# -------- Config template + service
 - name: Deploy HAProxy configuration (validated with -c)
   ansible.builtin.template:
-    src: haproxy.cfg.j2
+    src: templates/haproxy.cfg.j2
     dest: /etc/haproxy/haproxy.cfg
     owner: root
     group: root
