@@ -18,6 +18,56 @@
       HAProxy variables are missing/invalid. Check ports and socket paths in vars.yaml.
     success_msg: HAProxy variables look sane.
 
+# Prüfe, dass das gewünschte Interface existiert und eine IPv4 hat (falls gesetzt)
+- name: Preflight | Validate chosen HAProxy bind interface exists
+  when: haproxy_bind_interface is defined
+  vars:
+    _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.interfaces is defined
+      - haproxy_bind_interface in ansible_facts.interfaces
+      - _if is mapping
+      - (_ipv4_from_obj is defined) or (_ipv4_from_addrs is defined)
+    fail_msg: >
+      HAProxy bind interface {{ haproxy_bind_interface }} not found or has no IPv4.
+      Check the interface name and ensure facts are gathered.
+    success_msg: >-
+      HAProxy will bind on {{ haproxy_bind_interface }}
+      ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
+
+# Ermittele die Bind-Adresse und stelle sie als Fact bereit (fällt auf Default-IPv4 zurück)
+- name: Compute HAProxy bind address
+  vars:
+    _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
+    _if: "{{ (haproxy_bind_interface is defined) | ternary(hostvars[inventory_hostname].get(_if_key, {}), {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.set_fact:
+    haproxy_bind_address: >-
+      {{
+        ( _ipv4_from_obj
+          if (_ipv4_from_obj is defined)
+          else (_ipv4_from_addrs
+                  if (_ipv4_from_addrs is defined)
+                  else ansible_default_ipv4.address) )
+      }}
+
 # Install HAProxy + helper tools, deploy configuration, and enable service
 - name: Packages | HAProxy and tools
   ansible.builtin.apt:

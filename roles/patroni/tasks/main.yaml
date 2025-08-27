@@ -1,5 +1,6 @@
 ---
-# Preflight: catch misconfig early with clear messages
+# Preflight: validate cluster/inventory variables for Patroni
+
 - name: Preflight | Validate required variables (Patroni)
   ansible.builtin.assert:
     that:
@@ -22,11 +23,59 @@
       - groups['db'] is defined
       - (groups['db'] | length) >= 1
       - patroni_name | length > 0
-      - patroni_ip is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
     fail_msg: >
       One or more required Patroni variables are missing/invalid.
       Please review vars.yaml.
     success_msg: Patroni variables look sane.
+
+- name: Preflight | Validate chosen Patroni bind interface exists
+  vars:
+    _if_key: "{{ 'ansible_' ~ patroni_bind_interface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.assert:
+    that:
+      - patroni_bind_interface is string
+      - ansible_facts.interfaces is defined
+      - patroni_bind_interface in ansible_facts.interfaces
+      - _if is mapping
+      - (_ipv4_from_obj is defined) or (_ipv4_from_addrs is defined)
+    fail_msg: >
+      Patroni bind interface {{ patroni_bind_interface }} not found or has no IPv4.
+      Check the interface name (e.g. enp1s0) and ensure facts are gathered.
+    success_msg: >-
+      Patroni will bind on {{ patroni_bind_interface }}
+      ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
+
+# Compute the final IPv4 and expose it as host fact (overrides vars.yaml)
+- name: Compute Patroni bind IP from interface facts
+  vars:
+    _if_key: "{{ 'ansible_' ~ patroni_bind_interface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.set_fact:
+    patroni_ip: >-
+      {{
+        ( _ipv4_from_obj
+          if (_ipv4_from_obj is defined)
+          else (_ipv4_from_addrs
+                  if (_ipv4_from_addrs is defined)
+                  else ansible_default_ipv4.address) )
+      }}
 
 - name: Preflight | Each DB host has a valid ansible_host IPv4
   ansible.builtin.assert:

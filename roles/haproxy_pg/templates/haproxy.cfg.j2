@@ -24,7 +24,7 @@ defaults
 
 # Writes -> leader (verified via /master endpoint)
 frontend pg_write
-  bind *:{{ haproxy_write_port }}
+  bind {{ haproxy_bind_address }}:{{ haproxy_write_port }}
   default_backend pg_leader
 
 backend pg_leader
@@ -37,7 +37,7 @@ backend pg_leader
 
 # Reads -> replicas (verified via /replica endpoint)
 frontend pg_read
-  bind *:{{ haproxy_read_port }}
+  bind {{ haproxy_bind_address }}:{{ haproxy_read_port }}
   default_backend pg_replicas
 
 backend pg_replicas
@@ -51,7 +51,7 @@ backend pg_replicas
 
 # Simple built-in HAProxy stats page (no auth in lab setups)
 listen stats
-  bind *:{{ haproxy_stats_port }}
+bind {{ haproxy_bind_address }}:{{ haproxy_stats_port }}
   mode http
   option httplog
   stats enable

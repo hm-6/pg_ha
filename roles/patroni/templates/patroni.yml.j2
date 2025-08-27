@@ -5,8 +5,8 @@ namespace: "{{ pg_namespace }}"
 name: "{{ patroni_name }}"
 
 restapi:
-  # Patroni HTTP API for health/role; binds all interfaces
-  listen: "0.0.0.0:{{ patroni_rest_port }}"
+  # Patroni HTTP API for health/role
+  listen: "{{ patroni_listen_address }}:{{ patroni_rest_port }}"
   connect_address: "{{ patroni_ip }}:{{ patroni_rest_port }}"
 
 raft:
@@ -53,7 +53,7 @@ bootstrap:
 
 postgresql:
   # Runtime connection & data layout
-  listen: "0.0.0.0:{{ postgres_port }}"
+  listen: "{{ patroni_listen_address }}:{{ postgres_port }}"
   connect_address: "{{ patroni_ip }}:{{ postgres_port }}"
   data_dir: "/var/lib/postgresql/{{ pg_version }}/patroni"
   bin_dir: "/usr/lib/postgresql/{{ pg_version }}/bin"

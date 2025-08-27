@@ -10,6 +10,29 @@ all:
     patroni_rest_port: 8008     # Patroni REST API (health, role checks)
     patroni_raft_port: 7000     # Patroni RAFT peering port
 
+    # --- NEW: choose which interface to use for Patroni advertise/raft ---
+    # Set to e.g. "eth1" on your new machines
+    patroni_bind_interface: "enp1s0"
+
+    # Patroni defaults
+    patroni_name: "{{ inventory_hostname }}"
+
+    # IP derived from chosen interface, fallback to default IPv4
+    patroni_ip: >-
+      {{
+        (hostvars[inventory_hostname]['ansible_' ~ patroni_bind_interface] | default({})).ipv4.address
+        | default(ansible_default_ipv4.address)
+      }}
+
+    # Patroni listen address:
+    # - By default bind on all (0.0.0.0)
+    # - If you prefer binding only to the chosen interface, set below accordingly
+    patroni_listen_address: >-
+      {{
+        (hostvars[inventory_hostname]['ansible_' ~ patroni_bind_interface] | default({})).ipv4.address
+        | default('0.0.0.0')
+      }}
+
     # --- Network CIDR allowed for client + replication access in pg_hba ---
     pg_cluster_cidr: "192.168.178.0/24"
 
@@ -20,11 +43,6 @@ all:
     pg_replication:
       username: "replicator"
       password: "postgres"
-
-    # --- Per-host Patroni identity: name + REST/connect IP ---
-    #     Defaults tie to inventory names and ansible_host
-    patroni_name: "{{ inventory_hostname }}"
-    patroni_ip: "{{ hostvars[inventory_hostname].ansible_host | default(ansible_default_ipv4.address) }}"
 
     # --- Patroni cluster-wide defaults (seeded into DCS on bootstrap) ---
     patroni_dcs:
@@ -46,6 +64,7 @@ all:
           wal_keep_size: "128MB"
 
     # --- HAProxy ports & runtime socket paths ---
+    haproxy_bind_interface: "enp1s0"
     haproxy_stats_port: 8404
     haproxy_write_port: 5000   # Client writes hit the leader
     haproxy_read_port: 5001    # Client reads hit replicas
