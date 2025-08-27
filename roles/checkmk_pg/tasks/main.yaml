@@ -1,0 +1,36 @@
+---
+# Preflight: validate variables needed by the Checkmk local check
+- name: Preflight | Validate required variables (Checkmk)
+  ansible.builtin.assert:
+    that:
+      - groups['db'] is defined
+      - (groups['db'] | length) >= 1
+      - patroni_rest_port is integer
+      - 1 <= (patroni_rest_port | int) <= 65535
+      - haproxy_runtime_socket_host | regex_search('^/.+\\.sock$')
+      - checkmk_warn_lag_bytes is integer
+      - checkmk_crit_lag_bytes is integer
+      - (checkmk_warn_lag_bytes | int) < (checkmk_crit_lag_bytes | int)
+      - checkmk_local_dir is string and checkmk_local_dir | regex_search('^/.+')
+    fail_msg: >
+      Checkmk variables are missing/invalid. Verify Checkmk target directory,
+      Patroni port, HAProxy socket and LAG thresholds.
+    success_msg: Checkmk variables look sane.
+
+# Ensure the Checkmk "local" directory exists (agent executes scripts here)
+- name: Ensure Checkmk local directory exists
+  ansible.builtin.file:
+    path: "{{ checkmk_local_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# Deploy the local check script that renders Patroni/HAProxy health lines
+- name: Deploy CheckMK local check script
+  ansible.builtin.template:
+    src: checkmk.sh.j2
+    dest: "{{ checkmk_local_dir }}/check_patroni_haproxy"
+    owner: root
+    group: root
+    mode: '0755'

@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build Patroni API endpoint list (one per DB host, same port)
+PATRONI_APIS=({% for host in groups['db'] -%}"http://{{ hostvars[host].patroni_ip }}:{{ patroni_rest_port }}"{% if not loop.last %} {% endif %}{%- endfor %})
+
+# HAProxy runtime socket to read live stats (master-worker socket)
+HAPROXY_SOCK="{{ haproxy_runtime_socket_host }}"
+
+# LAG thresholds for Checkmk perfdata/state mapping
+WARN_LAG={{ checkmk_warn_lag_bytes }}
+CRIT_LAG={{ checkmk_crit_lag_bytes }}
+
+# Small curl wrapper with timeout & silent failure
+curl_json() { curl -fsS --max-time 2 "$1"; }
+
+first_working_api=""
+cluster_json=""
+source_ip=""
+
+# Pick the first responding Patroni API and cache cluster JSON
+pick_working_patroni() {
+  for base in "${PATRONI_APIS[@]}"; do
+    if out=$(curl_json "${base}/cluster" 2>/dev/null); then
+      first_working_api="$base"
+      cluster_json="$out"
+      # Extract caller IP for debug info (no bash string slicing)
+      source_ip="$(echo "$base" | cut -d/ -f3 | cut -d: -f1)"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Present lag nicely for human-visible output (but perfdata uses raw)
+fmt_lag_for_humans() {
+  local v="$1"
+  if [[ "$v" == "-" || "$v" == "unknown" ]]; then echo "-"; else echo "${v}B"; fi
+}
+
+# Emit perfdata only if numeric (Checkmk expects pipe syntax)
+perf_lag() {
+  local v="$1"
+  if [[ "$v" =~ ^[0-9]+$ ]]; then
+    echo "|lag=${v};${WARN_LAG};${CRIT_LAG}"
+  else
+    echo ""
+  fi
+}
+
+# Decide if a replica should be UP in HAProxy replicas backend
+is_replica_expected_up() {
+  local role="$1" state="$2"
+  if [[ "$role" == "replica" || "$role" == "sync_standby" ]]; then
+    if [[ "$state" == "running" || "$state" == "streaming" ]]; then return 0; fi
+  fi
+  return 1
+}
+
+# Fail soft if Patroni APIs are all down; still report HAProxy state
+if ! pick_working_patroni; then
+  echo "2 patroni_leader - no Patroni API reachable"
+  echo "2 patroni_quorum - unknown (no Patroni API reachable)"
+  echo "2 patroni_members - unknown (no Patroni API reachable)"
+  echo "1 haproxy_stats - socket missing or insufficient permissions (${HAPROXY_SOCK})"
+  exit 0
+fi
+
+# Leader + quorum summary
+leader_name=$(jq -r '.members[] | select(.role=="leader") | .name' <<<"$cluster_json" | head -n1)
+leader_host=$(jq -r '.members[] | select(.role=="leader") | .host' <<<"$cluster_json" | head -n1)
+leader_tl=$(jq -r '.members[] | select(.role=="leader") | (.timeline // "-")' <<<"$cluster_json" | head -n1)
+leader_state=$(jq -r '.members[] | select(.role=="leader") | .state' <<<"$cluster_json" | head -n1)
+
+if [[ -n "$leader_name" && "$leader_state" == "running" ]]; then
+  echo "0 patroni_leader leader=1 name=${leader_name} host=${leader_host} tl=${leader_tl} source=${source_ip}"
+else
+  echo "2 patroni_leader leader=0 name=- host=- tl=- source=${source_ip}"
+fi
+
+total=$(jq -r '.members | length' <<<"$cluster_json")
+healthy=$(jq '[.members[] | select(.state=="running" or .state=="streaming")] | length' <<<"$cluster_json")
+
+if (( healthy >= 2 )); then
+  echo "0 patroni_quorum healthy=${healthy};2 total=${total} source=${source_ip}"
+else
+  echo "2 patroni_quorum healthy=${healthy};2 total=${total} source=${source_ip}"
+fi
+
+# Cluster member health summary
+if (( healthy == total )); then
+  echo "0 patroni_members - all members healthy"
+elif (( healthy >= ( (total/2)+1 ) )); then
+  echo "1 patroni_members - ${healthy}/${total} members healthy"
+else
+  echo "2 patroni_members - ${healthy}/${total} members healthy"
+fi
+
+# Per-node lines with role/state/timeline/lag (with perfdata)
+jq -r '.members[] | @base64' <<<"$cluster_json" | while read -r row; do
+  _jq() { echo "$row" | base64 --decode | jq -r "$1"; }
+  name=$(_jq '.name')
+  role=$(_jq '.role')
+  state=$(_jq '.state')
+  host=$(_jq '.host')
+  tl=$(_jq '(.timeline // "-")')
+  lag_raw=$(_jq '(.lag // "-")')
+  lag_h=$(fmt_lag_for_humans "$lag_raw")
+  perf=$(perf_lag "$lag_raw")
+  sync_flag=0
+  if [[ "$role" == "sync_standby" ]]; then sync_flag=1; fi
+
+  code=0; msg="OK"
+  if [[ "$role" != "leader" ]]; then
+    if [[ "$state" != "running" && "$state" != "streaming" ]]; then code=2; msg="UNHEALTHY"; fi
+  fi
+  echo "${code} patroni_node_${name} lag=${lag_h};${WARN_LAG};${CRIT_LAG} role=${role} state=${state} tl=${tl} host=${host} sync=${sync_flag} ${perf}"
+done
+
+# Pull HAProxy CSV stats via runtime socket to cross-check routing state
+if [[ ! -S "$HAPROXY_SOCK" ]]; then
+  echo "1 haproxy_stats - socket missing or insufficient permissions (${HAPROXY_SOCK})"
+  exit 0
+fi
+
+if ! csv=$(echo "show stat" | socat - "UNIX-CLIENT:${HAPROXY_SOCK}" 2>/dev/null); then
+  echo "1 haproxy_stats - could not read stats (${HAPROXY_SOCK})"
+  exit 0
+fi
+
+# Map of Patroni roles/states per node for expectations
+declare -A PATRONI_ROLE PATRONI_STATE
+while read -r row; do
+  name=$(jq -r '.name' <<<"$row")
+  role=$(jq -r '.role' <<<"$row")
+  state=$(jq -r '.state' <<<"$row")
+  PATRONI_ROLE["$name"]="$role"
+  PATRONI_STATE["$name"]="$state"
+done < <(jq -c '.members[]' <<<"$cluster_json")
+
+# Parse HAProxy CSV header and rows into arrays
+readarray -t lines <<<"$csv"
+header="${lines[0]}"; IFS=',' read -r -a hdr <<<"$header"
+
+idx_of() { local want="$1"; for i in "${!hdr[@]}"; do [[ "${hdr[$i]}" == "$want" ]] && { echo "$i"; return 0; }; done; return 1; }
+i_pxname=$(idx_of "pxname"); i_svname=$(idx_of "svname"); i_status=$(idx_of "status")
+
+# Collect status per server for leader vs replica backends
+declare -A HL_STATUS HR_STATUS
+for line in "${lines[@]:1}"; do
+  IFS=',' read -r -a f <<<"$line"
+  px="${f[$i_pxname]}"; sv="${f[$i_svname]}"; st="${f[$i_status]}"
+  if [[ "$sv" == "FRONTEND" || "$sv" == "BACKEND" || -z "$sv" ]]; then continue; fi
+  case "$px" in
+    pg_leader)   HL_STATUS["$sv"]="$st" ;;
+    pg_replicas) HR_STATUS["$sv"]="$st" ;;
+  esac
+done
+
+# Validate exactly one leader is UP via HAProxy
+leader_up=0 leader_down=0
+for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+  s="${HL_STATUS[$n]:-DOWN}"; if [[ "$s" == "UP" ]]; then ((leader_up++)); else ((leader_down++)); fi
+done
+if (( leader_up == 1 )); then
+  echo "0 haproxy_pg_leader up=${leader_up} down=${leader_down} - exactly one leader reachable"
+else
+  echo "2 haproxy_pg_leader up=${leader_up} down=${leader_down} - expected=1 UP"
+fi
+
+# Validate at least one replica is UP via HAProxy
+rep_up=0 rep_down=0
+for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+  s="${HR_STATUS[$n]:-DOWN}"; if [[ "$s" == "UP" ]]; then ((rep_up++)); else ((rep_down++)); fi
+done
+if (( rep_up >= 1 )); then
+  echo "0 haproxy_pg_replicas up=${rep_up} down=${rep_down} - replicas available"
+else
+  echo "2 haproxy_pg_replicas up=${rep_up} down=${rep_down} - no replica reachable"
+fi
+
+# Per-host checks to match Patroni expectations vs HAProxy view
+for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+  st="${HL_STATUS[$n]:-DOWN}"
+  prole="${PATRONI_ROLE[$n]:-unknown}"
+  if [[ "$prole" == "leader" ]]; then
+    if [[ "$st" == "UP" ]]; then echo "0 haproxy_leader_${n} status=UP"; else echo "2 haproxy_leader_${n} status=${st} (unexpected, patroni_role=leader)"; fi
+  else
+    if [[ "$st" == "DOWN" ]]; then echo "0 haproxy_leader_${n} status=DOWN (expected)"; else echo "2 haproxy_leader_${n} status=${st} (unexpected, patroni_role=${prole})"; fi
+  fi
+done
+
+for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+  st="${HR_STATUS[$n]:-DOWN}"
+  prole="${PATRONI_ROLE[$n]:-unknown}"
+  pstate="${PATRONI_STATE[$n]:-unknown}"
+  if is_replica_expected_up "$prole" "$pstate"; then
+    if [[ "$st" == "UP" ]]; then echo "0 haproxy_replicas_${n} status=UP (expected)"; else echo "2 haproxy_replicas_${n} status=${st} (unexpected, patroni_role=${prole}, patroni_state=${pstate})"; fi
+  else
+    if [[ "$st" == "DOWN" ]]; then echo "0 haproxy_replicas_${n} status=DOWN (expected, patroni_state=${pstate})"; else echo "2 haproxy_replicas_${n} status=${st} (unexpected, patroni_role=${prole}, patroni_state=${pstate})"; fi
+  fi
+done
+
+exit 0

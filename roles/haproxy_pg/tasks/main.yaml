@@ -1,0 +1,43 @@
+---
+# Preflight: validate HAProxy-related variables (fail early if wrong)
+- name: Preflight | Validate required variables (HAProxy)
+  ansible.builtin.assert:
+    that:
+      - groups['db'] is defined
+      - (groups['db'] | length) >= 1
+      - haproxy_write_port is integer
+      - haproxy_read_port is integer
+      - haproxy_stats_port is integer
+      - 1 <= (haproxy_write_port | int) <= 65535
+      - 1 <= (haproxy_read_port | int) <= 65535
+      - 1 <= (haproxy_stats_port | int) <= 65535
+      - (haproxy_write_port | int) != (haproxy_read_port | int)
+      - haproxy_runtime_socket_cfg | regex_search('^/.+\\.sock$')
+      - haproxy_runtime_socket_host | regex_search('^/.+\\.sock$')
+    fail_msg: >
+      HAProxy variables are missing/invalid. Check ports and socket paths in vars.yaml.
+    success_msg: HAProxy variables look sane.
+
+# Install HAProxy + helper tools, deploy configuration, and enable service
+- name: Packages | HAProxy and tools
+  ansible.builtin.apt:
+    name: "{{ haproxy_packages + common_packages }}"
+    state: present
+    update_cache: true
+
+# Validate configuration syntax server-side before applying
+- name: Deploy HAProxy configuration (validated with -c)
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'haproxy -c -f %s'
+  notify: Reload haproxy
+
+- name: Enable & start HAProxy
+  ansible.builtin.service:
+    name: haproxy
+    state: started
+    enabled: true

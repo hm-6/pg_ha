@@ -1,0 +1,18 @@
+# systemd unit for Patroni
+
+[Unit]
+Description=Patroni service for PostgreSQL HA
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+Environment=PATRONI_CONFIG_FILE=/etc/patroni/patroni.yml
+ExecStart=/usr/bin/patroni /etc/patroni/patroni.yml
+Restart=on-failure
+LimitNOFILE=102400
+
+[Install]
+WantedBy=multi-user.target

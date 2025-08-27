@@ -1,0 +1,23 @@
+---
+# Main playbook: deploy Patroni cluster nodes and HAProxy + monitoring
+
+# 1) Database nodes: install Postgres from PGDG, Patroni, bootstrap cluster
+- name: DB nodes (PostgreSQL + Patroni)
+  hosts: db
+  become: true
+  roles:
+    - patroni
+
+# 2) HAProxy on the same nodes (or separate group later): route R/W traffic
+- name: HAProxy + Monitoring
+  hosts: haproxy
+  become: true
+  roles:
+    - haproxy_pg
+
+# 3) Checkmk local check deployed on HAProxy nodes to expose health to agent
+- name: Monitoring (Checkmk local check)
+  hosts: haproxy
+  become: true
+  roles:
+    - checkmk_pg

@@ -1,0 +1,11 @@
+---
+# Reload systemd after unit changes
+- name: Systemd daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+# Bounce Patroni when config changed
+- name: Restart patroni
+  ansible.builtin.service:
+    name: patroni
+    state: restarted

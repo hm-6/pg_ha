@@ -1,0 +1,126 @@
+---
+# Preflight: catch misconfig early with clear messages
+- name: Preflight | Validate required variables (Patroni)
+  ansible.builtin.assert:
+    that:
+      - pg_version is integer
+      - pg_version | int >= 10
+      - postgres_port is integer
+      - patroni_rest_port is integer
+      - patroni_raft_port is integer
+      - 1 <= (postgres_port | int) <= 65535
+      - 1 <= (patroni_rest_port | int) <= 65535
+      - 1 <= (patroni_raft_port | int) <= 65535
+      - postgres_port | int not in [patroni_rest_port | int, patroni_raft_port | int]
+      - pg_cluster_scope | length > 0
+      - pg_namespace | length > 0
+      - pg_cluster_cidr is match('^\\d+\\.\\d+\\.\\d+\\.\\d+/\\d{1,2}$')
+      - pg_superuser.username | length > 0
+      - pg_superuser.password | length > 0
+      - pg_replication.username | length > 0
+      - pg_replication.password | length > 0
+      - groups['db'] is defined
+      - (groups['db'] | length) >= 1
+      - patroni_name | length > 0
+      - patroni_ip is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+    fail_msg: >
+      One or more required Patroni variables are missing/invalid.
+      Please review vars.yaml.
+    success_msg: Patroni variables look sane.
+
+- name: Preflight | Each DB host has a valid ansible_host IPv4
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].ansible_host is defined
+      - hostvars[item].ansible_host is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+    fail_msg: "Host {{ item }} is missing a valid 'ansible_host' (IPv4)."
+    success_msg: "Host {{ item }} has a valid 'ansible_host'."
+  loop: "{{ groups['db'] | default([]) }}"
+
+# Install PostgreSQL packages from PGDG (newer than distro), then Patroni
+- name: Apt | Install PGDG key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/pgdg.asc
+    mode: '0644'
+
+- name: Apt | Convert key to GPG keyring
+  ansible.builtin.command:
+    cmd: >
+      gpg --dearmor --yes
+      --output /usr/share/keyrings/pgdg.gpg
+      /usr/share/keyrings/pgdg.asc
+  args:
+    creates: /usr/share/keyrings/pgdg.gpg
+
+- name: Apt | Add PGDG repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
+    filename: "pgdg"
+    state: present
+  register: pgdg_repo
+
+- name: Apt | Update cache if repository changed
+  ansible.builtin.apt:
+    update_cache: true
+  when: pgdg_repo is changed
+
+- name: Packages | Common tools
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+
+- name: Packages | Database stack
+  ansible.builtin.apt:
+    name: "{{ db_packages }}"
+    state: present
+
+# Ensure distro postgres service is not fighting Patroni
+- name: Disable distro PostgreSQL service (Patroni manages Postgres)
+  ansible.builtin.service:
+    name: postgresql
+    state: stopped
+    enabled: false
+  failed_when: false
+
+# Filesystem layout Patroni expects
+- name: Create Patroni/Postgres directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "{{ item.mode | default('0750') }}"
+  loop:
+    - { path: "/etc/patroni", mode: "0755" }
+    - { path: "/var/lib/postgresql/{{ pg_version }}/patroni" }
+    - { path: "/var/lib/postgresql/raft" }
+    - { path: "/var/run/postgresql", mode: "2775" }
+
+# Drop Patroni config and unit, then start it
+- name: Deploy Patroni configuration
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: Restart patroni
+
+- name: Deploy systemd unit for Patroni
+  ansible.builtin.template:
+    src: patroni.service.j2
+    dest: /etc/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Systemd daemon-reload
+    - Restart patroni
+
+- name: Enable & start Patroni
+  ansible.builtin.service:
+    name: patroni
+    state: started
+    enabled: true
