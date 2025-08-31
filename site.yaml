@@ -2,7 +2,7 @@
 # Main playbook: deploy Patroni cluster nodes, HAProxy and Checkmk (no roles)
 
 - name: DB nodes (PostgreSQL + Patroni)
-  hosts: db
+  hosts: postgreses
   become: true
   gather_facts: true
 
@@ -22,7 +22,7 @@
 
 
 - name: HAProxy
-  hosts: db
+  hosts: postgreses
   become: true
   gather_facts: true
 
@@ -38,7 +38,7 @@
 
 
 - name: Monitoring (Checkmk local check)
-  hosts: db
+  hosts: postgreses
   become: true
   gather_facts: true
 

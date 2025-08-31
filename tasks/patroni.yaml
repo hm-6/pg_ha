@@ -3,7 +3,7 @@
 - name: Preflight | Minimal required variables (Checkmk)
   ansible.builtin.assert:
     that:
-      - (groups['db'] | default([])) | length >= 1
+      - (groups['postgreses'] | default([])) | length >= 1
       - patroni_rest_port is integer
       - 1 <= (patroni_rest_port | int) <= 65535
       - (haproxy_runtime_socket_host | string) is match('^/.+')
@@ -42,7 +42,7 @@
       - hostvars[item].ansible_host is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
     fail_msg: "Host {{ item }} is missing a valid 'ansible_host' (IPv4)."
     success_msg: "Host {{ item }} has a valid 'ansible_host'."
-  loop: "{{ groups['db'] | default([]) }}"
+  loop: "{{ groups['postgreses'] | default([]) }}"
 
 # -------- PGDG repository and packages
 - name: Apt | Install PGDG key

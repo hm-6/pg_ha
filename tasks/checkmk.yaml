@@ -5,8 +5,8 @@
 - name: Preflight | Validate required variables (Checkmk)
   ansible.builtin.assert:
     that:
-      - groups['db'] is defined
-      - (groups['db'] | length) >= 1
+      - groups['postgreses'] is defined
+      - (groups['postgreses'] | length) >= 1
       - patroni_rest_port is integer
       - 1 <= (patroni_rest_port | int) <= 65535
       - haproxy_runtime_socket_host | regex_search('^/.+\\.sock$')

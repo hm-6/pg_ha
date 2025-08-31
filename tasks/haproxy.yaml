@@ -3,7 +3,7 @@
 - name: Preflight | Minimal required variables (HAProxy)
   ansible.builtin.assert:
     that:
-      - (groups['db'] | default([])) | length >= 1
+      - (groups['postgreses'] | default([])) | length >= 1
       - haproxy_write_port is integer
       - haproxy_read_port is integer
       - haproxy_stats_port is integer

@@ -10,7 +10,7 @@ raft:
   data_dir: /var/lib/postgresql/raft
   self_addr: "{{ patroni_ip }}:{{ patroni_raft_port }}"
   partner_addrs:
-{% for host in groups['db'] if host != inventory_hostname %}
+{% for host in groups['postgreses'] if host != inventory_hostname %}
     - "{{ hostvars[host].patroni_ip }}:{{ patroni_raft_port }}"
 {% endfor %}
 

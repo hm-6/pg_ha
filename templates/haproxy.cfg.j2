@@ -28,7 +28,7 @@ backend pg_leader
   option httpchk GET /master
   http-check expect status 200
   default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
-{% for host in groups['db'] %}
+{% for host in groups['postgreses'] %}
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
 {% endfor %}
 
@@ -42,7 +42,7 @@ backend pg_replicas
   option httpchk GET /replica
   http-check expect status 200
   default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
-{% for host in groups['db'] %}
+{% for host in groups['postgreses'] %}
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
 {% endfor %}
 

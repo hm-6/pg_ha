@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Patroni APIs (queried in this order)
-PATRONI_APIS=({% for host in groups['db'] -%}"http://{{ hostvars[host].patroni_ip }}:{{ patroni_rest_port }}"{% if not loop.last %} {% endif %}{%- endfor %})
+PATRONI_APIS=({% for host in groups['postgreses'] -%}"http://{{ hostvars[host].patroni_ip }}:{{ patroni_rest_port }}"{% if not loop.last %} {% endif %}{%- endfor %})
 # HAProxy runtime socket (master/worker)
 HAPROXY_SOCK="{{ haproxy_runtime_socket_host }}"
 
@@ -144,7 +144,7 @@ for line in "${lines[@]:1}"; do
 done
 
 leader_up=0 leader_down=0
-for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+for n in {% for host in groups['postgreses'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
   s="${HL_STATUS[$n]:-DOWN}"; if [[ "$s" == "UP" ]]; then ((leader_up++)); else ((leader_down++)); fi
 done
 if (( leader_up == 1 )); then
@@ -154,7 +154,7 @@ else
 fi
 
 rep_up=0 rep_down=0
-for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+for n in {% for host in groups['postgreses'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
   s="${HR_STATUS[$n]:-DOWN}"; if [[ "$s" == "UP" ]]; then ((rep_up++)); else ((rep_down++)); fi
 done
 if (( rep_up >= 1 )); then
@@ -163,7 +163,7 @@ else
   echo "2 haproxy_pg_replicas up=${rep_up} down=${rep_down} - no replica reachable"
 fi
 
-for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+for n in {% for host in groups['postgreses'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
   st="${HL_STATUS[$n]:-DOWN}"
   {% raw %}prole=${PATRONI_ROLE[$n]:-unknown}{% endraw %}
   if [[ "$prole" == "leader" ]]; then
@@ -181,7 +181,7 @@ for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% end
   fi
 done
 
-for n in {% for host in groups['db'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
+for n in {% for host in groups['postgreses'] -%}{{ hostvars[host].patroni_name }} {% endfor %}; do
   st="${HR_STATUS[$n]:-DOWN}"
   {% raw %}prole=${PATRONI_ROLE[$n]:-unknown}{% endraw %}
   {% raw %}pstate=${PATRONI_STATE[$n]:-unknown}{% endraw %}
