@@ -1,0 +1,183 @@
+# pg_ha_rolling_restart.yaml
+- name: Rolling restart (with reboot) of Patroni nodes
+  hosts: localhost
+  gather_facts: no
+  become: false
+
+  vars:
+    patroni_conf: /etc/patroni/patroni.yml
+    # Optional: HAProxy Runtime-Socket; wenn nicht gesetzt, werden die HAProxy-Schritte übersprungen
+    haproxy_socket: "{{ hostvars[groups['postgreses'][0]].haproxy_runtime_socket_host | default(omit) }}"
+    haproxy_backends:
+      - pgsql_write
+      - pgsql_read
+
+  tasks:
+    - name: Collect current cluster state (via first DB host)
+      delegate_to: "{{ groups['postgreses'][0] }}"
+      become: true
+      ansible.builtin.command: "sudo -u postgres patronictl -c {{ patroni_conf }} list --format=json"
+      register: patroni_list_json
+      changed_when: false
+
+    - name: Ensure patroni output is present
+      ansible.builtin.assert:
+        that:
+          - patroni_list_json.stdout is defined
+          - (patroni_list_json.stdout | length) > 0
+        fail_msg: "patronictl returned no JSON."
+
+    - name: Compute leader, cluster name and rolling order (replicas first, leader last)
+      vars:
+        members: "{{ patroni_list_json.stdout | from_json }}"
+      ansible.builtin.set_fact:
+        patroni_leader: "{{ (members | selectattr('Role','equalto','Leader') | list)[0]['Member'] }}"
+        cluster_name: "{{ (members | first)['Cluster'] }}"
+        # bevorzugter Switchover-Kandidat: zuerst Sync Standby, sonst erste Replica
+        switchover_target: >-
+          {{
+            (
+              (members | selectattr('Role','equalto','Sync Standby') | map(attribute='Member') | list)
+              + (members | selectattr('Role','equalto','Replica') | map(attribute='Member') | list)
+            )
+            | difference([ (members | selectattr('Role','equalto','Leader') | map(attribute='Member') | first) ])
+            | first
+          }}
+        restart_order: >-
+          {{ (groups['postgreses'] | difference([
+                (members | selectattr('Role','equalto','Leader') | map(attribute='Member') | first)
+              ])) + [
+                (members | selectattr('Role','equalto','Leader') | map(attribute='Member') | first)
+              ] }}
+
+    - name: Show rolling order and chosen switchover target
+      ansible.builtin.debug:
+        msg:
+          - "Rolling order: {{ restart_order }} (leader: {{ patroni_leader }}, cluster: {{ cluster_name }})"
+          - "Switchover target (preferred): {{ switchover_target }}"
+
+    # --- Switchover vor dem Reboot des (ursprünglichen) Leaders ---
+    - name: Switchover leader -> {{ switchover_target }} (preferred)
+      block:
+        - name: Perform switchover away from current leader
+          delegate_to: "{{ patroni_leader }}"
+          become: true
+          ansible.builtin.command: >-
+            sudo -u postgres patronictl -c {{ patroni_conf }}
+            switchover --leader {{ patroni_leader }}
+            --candidate {{ switchover_target }} --force {{ cluster_name }}
+          register: sw_result
+          changed_when: "'Switched' in (sw_result.stdout | default('')) or sw_result.rc == 0"
+
+        - name: Wait until former leader is no longer Leader
+          delegate_to: "{{ patroni_leader }}"
+          become: true
+          ansible.builtin.command: "sudo -u postgres patronictl -c {{ patroni_conf }} list --format=json"
+          register: after_sw
+          changed_when: false
+          retries: 30
+          delay: 2
+          until: >
+            (
+              (after_sw.stdout | from_json)
+              | selectattr('Member','equalto', patroni_leader)
+              | map(attribute='Role') | list
+            )[0] != 'Leader'
+      rescue:
+        - name: Switchover did not move leader – try FAILOVER to {{ switchover_target }}
+          delegate_to: "{{ patroni_leader }}"
+          become: true
+          ansible.builtin.command: >-
+            sudo -u postgres patronictl -c {{ patroni_conf }}
+            failover --candidate {{ switchover_target }} --force {{ cluster_name }}
+          register: fo_result
+          changed_when: "'Switched' in (fo_result.stdout | default('')) or fo_result.rc == 0"
+
+        - name: Wait until former leader is no longer Leader (after failover)
+          delegate_to: "{{ patroni_leader }}"
+          become: true
+          ansible.builtin.command: "sudo -u postgres patronictl -c {{ patroni_conf }} list --format=json"
+          register: after_fo
+          changed_when: false
+          retries: 30
+          delay: 2
+          until: >
+            (
+              (after_fo.stdout | from_json)
+              | selectattr('Member','equalto', patroni_leader)
+              | map(attribute='Role') | list
+            )[0] != 'Leader'
+
+    # --- Optional: HAProxy vor Reboot „drainen“ (jeder Host der Reihe nach) ---
+    - name: (Optional) Drain host from HAProxy backends
+      when: haproxy_socket is defined
+      loop: "{{ restart_order }}"
+      loop_control:
+        label: "drain {{ item }}"
+      delegate_to: "{{ item }}"
+      become: true
+      ansible.builtin.shell: |
+        {% for b in haproxy_backends %}
+        echo "disable server {{ b }}/{{ item }}" | socat - {{ haproxy_socket }}
+        {% endfor %}
+      args:
+        executable: /bin/bash
+      changed_when: true
+      failed_when: false
+
+    # --- Reboot pro Host, nacheinander in der berechneten Reihenfolge ---
+    - name: Reboot host
+      loop: "{{ restart_order }}"
+      loop_control:
+        label: "reboot {{ item }}"
+      delegate_to: "{{ item }}"
+      become: true
+      ansible.builtin.reboot:
+        reboot_timeout: 900
+        connect_timeout: 60
+        post_reboot_delay: 10
+
+    - name: Wait for Patroni REST API after reboot
+      loop: "{{ restart_order }}"
+      loop_control:
+        label: "wait REST {{ item }}"
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[item].ansible_host | default(item) }}"
+        port: "{{ (hostvars[item].patroni_rest_port | default(8008)) | int }}"
+        delay: 2
+        timeout: 300
+
+    - name: Wait until node is healthy (running or streaming)
+      loop: "{{ restart_order }}"
+      loop_control:
+        label: "wait healthy {{ item }}"
+      delegate_to: "{{ item }}"
+      become: true
+      ansible.builtin.command: "sudo -u postgres patronictl -c {{ patroni_conf }} list --format=json"
+      register: after_reboot
+      changed_when: false
+      retries: 60
+      delay: 2
+      until: >
+        (
+          (after_reboot.stdout | from_json)
+          | selectattr('Member','equalto', item)
+          | map(attribute='State') | list
+        )[0] in ['running','streaming']
+
+    # --- Optional: In HAProxy wieder aktivieren ---
+    - name: (Optional) Re-enable host in HAProxy backends
+      when: haproxy_socket is defined
+      loop: "{{ restart_order }}"
+      loop_control:
+        label: "enable {{ item }}"
+      delegate_to: "{{ item }}"
+      become: true
+      ansible.builtin.shell: |
+        {% for b in haproxy_backends %}
+        echo "enable server {{ b }}/{{ item }}" | socat - {{ haproxy_socket }}
+        {% endfor %}
+      args:
+        executable: /bin/bash
+      changed_when: true
+      failed_when: false
