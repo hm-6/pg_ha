@@ -1,0 +1,66 @@
+all:
+  vars:
+    ctx_os_groups: []
+  children:
+    postgreses:
+      vars:
+        pg_cluster_scope: pg-ha
+        pg_namespace: /db/
+        pg_version: 16
+        postgres_port: 5432
+        patroni_rest_port: 8008
+        patroni_raft_port: 7000
+        patroni_bind_interface: enp1s0
+        patroni_name: '{{ inventory_hostname }}'
+        patroni_ip: "{{\n  (hostvars[inventory_hostname]['ansible_' ~ patroni_bind_interface]\
+          \ | default({})).ipv4.address\n  | default(ansible_default_ipv4.address)\n\
+          }}"
+        patroni_listen_address: "{{\n  (hostvars[inventory_hostname]['ansible_' ~\
+          \ patroni_bind_interface] | default({})).ipv4.address\n  | default('0.0.0.0')\n\
+          }}"
+        pg_cluster_cidr: 192.168.178.0/24
+        pg_superuser:
+          username: postgres
+          password: postgres
+        pg_replication:
+          username: replicator
+          password: postgres
+        patroni_dcs:
+          ttl: 30
+          loop_wait: 10
+          retry_timeout: 10
+          synchronous_mode: true
+          synchronous_mode_strict: true
+          synchronous_node_count: 1
+          postgresql:
+            parameters:
+              max_connections: 100
+              shared_buffers: 128MB
+              wal_level: replica
+              hot_standby: 'on'
+              hot_standby_feedback: 'on'
+              max_wal_senders: 10
+              max_replication_slots: 10
+              wal_keep_size: 128MB
+        haproxy_bind_interface: enp1s0
+        haproxy_stats_port: 8404
+        haproxy_write_port: 5000
+        haproxy_read_port: 5001
+        haproxy_runtime_socket_cfg: /haproxy-runtime.sock
+        haproxy_runtime_socket_host: /haproxy-runtime.sock
+        checkmk_warn_lag_bytes: 10485760
+        checkmk_crit_lag_bytes: 104857600
+        checkmk_local_dir: /usr/lib/check_mk_agent/local/300
+        common_packages:
+        - curl
+        - gnupg
+        - lsb-release
+        - jq
+        - socat
+        db_packages:
+        - postgresql-{{ pg_version }}
+        - patroni
+        - python3-psycopg2
+        - python3-pysyncobj
+        haproxy_packages:
+        - haproxy
