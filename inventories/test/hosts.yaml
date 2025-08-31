@@ -16,9 +16,8 @@ all:
           cidr: 10.32.8.128/26
           label: ingress
     j1:
-      ansible_host: ilt77278.networxs.local
+      ansible_host: j1
       location: fra
-      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
       networks:
         - address: 192.168.178.51
           cidr: 192.168.178.0/24
@@ -27,9 +26,8 @@ all:
           cidr: 192.168.178.0/24
           label: ingress
     j2:
-      ansible_host: ilt77279.networxs.local
+      ansible_host: j2
       location: fra
-      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
       networks:
         - address: 192.168.178.52
           cidr: 192.168.178.0/24
@@ -38,9 +36,8 @@ all:
           cidr: 192.168.178.0/24
           label: ingress
     j3:
-      ansible_host: ilt77280.networxs.local
+      ansible_host: j3
       location: fra
-      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
       networks:
         - address: 192.168.178.53
           cidr: 192.168.178.0/24

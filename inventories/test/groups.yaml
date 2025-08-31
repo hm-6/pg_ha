@@ -13,9 +13,9 @@ all:
       vars:
         ansible_group_priority: 10
       hosts:
-        test-postgres-1: {}
-        test-postgres-2: {}
-        test-postgres-3: {}
+        j1: {}
+        j2: {}
+        j3: {}
     telesto:
       vars:
         ansible_group_priority: 10
