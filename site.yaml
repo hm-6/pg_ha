@@ -22,7 +22,7 @@
 
 
 - name: HAProxy
-  hosts: haproxy
+  hosts: db
   become: true
   gather_facts: true
 
@@ -38,7 +38,7 @@
 
 
 - name: Monitoring (Checkmk local check)
-  hosts: haproxy
+  hosts: db
   become: true
   gather_facts: true
 
