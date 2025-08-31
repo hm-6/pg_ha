@@ -35,14 +35,23 @@
           else (_ipv4_from_addrs) )
       }}
 
-- name: Preflight | Each DB host has a valid ansible_host IPv4
+# -------- Preflight: jeder Host hat eine IPv4 (Facts oder ansible_host)
+- name: Preflight | Each DB host has a valid IPv4
   ansible.builtin.assert:
     that:
-      - hostvars[item].ansible_host is defined
-      - hostvars[item].ansible_host is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
-    fail_msg: "Host {{ item }} is missing a valid 'ansible_host' (IPv4)."
-    success_msg: "Host {{ item }} has a valid 'ansible_host'."
+      - >
+        (
+          hostvars[item].ansible_host is defined and
+          (hostvars[item].ansible_host | string) is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+        ) or (
+          hostvars[item]['ansible_default_ipv4'] is defined and
+          hostvars[item]['ansible_default_ipv4']['address'] is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+        )
+    fail_msg: "Host {{ item }} has no detectable IPv4 (ansible_host or ansible_default_ipv4.address)."
+    quiet: true
   loop: "{{ groups['postgreses'] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
 
 # -------- PGDG repository and packages
 - name: Apt | Install PGDG key

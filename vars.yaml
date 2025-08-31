@@ -92,19 +92,3 @@ all:
 
     haproxy_packages:
       - haproxy
-
-  children:
-    # --- Database nodes (Patroni members) ---
-    db:
-      hosts:
-        db1:
-          ansible_host: 192.168.178.51
-        db2:
-          ansible_host: 192.168.178.52
-        db3:
-          ansible_host: 192.168.178.53
-
-    # --- HAProxy runs on the DB nodes in this topology ---
-    haproxy:
-      children:
-        db: {}
