@@ -1,0 +1,84 @@
+# ======================================================================
+# DONT CHANGE - generated from catalog and managed via pipeline
+# ======================================================================
+
+all:
+  hosts:
+    test-lb-1:
+      ansible_host: ilt77313.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 10.33.8.162
+          cidr: 10.33.8.128/26
+          label: mgmt
+        - address: 10.32.8.162
+          cidr: 10.32.8.128/26
+          label: ingress
+    j1:
+      ansible_host: ilt77278.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 192.168.178.51
+          cidr: 192.168.178.0/24
+          label: mgmt
+        - address: 192.168.178.51
+          cidr: 192.168.178.0/24
+          label: ingress
+    j2:
+      ansible_host: ilt77279.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 192.168.178.52
+          cidr: 192.168.178.0/24
+          label: mgmt
+        - address: 192.168.178.52
+          cidr: 192.168.178.0/24
+          label: ingress
+    j3:
+      ansible_host: ilt77280.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 192.168.178.53
+          cidr: 192.168.178.0/24
+          label: mgmt
+        - address: 192.168.178.53
+          cidr: 192.168.178.0/24
+          label: ingress
+    test-minio-1:
+      ansible_host: ilt77281.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 10.33.9.14
+          cidr: 10.33.9.0/26
+          label: mgmt
+        - address: 10.32.9.14
+          cidr: 10.32.9.0/26
+          label: ingress
+    test-minio-2:
+      ansible_host: ilt77282.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 10.33.9.15
+          cidr: 10.33.9.0/26
+          label: mgmt
+        - address: 10.32.9.15
+          cidr: 10.32.9.0/26
+          label: ingress
+    test-minio-3:
+      ansible_host: ilt77283.networxs.local
+      location: fra
+      ansible_ssh_common_args: -o ProxyJump=ilp50852.networxs.local
+      networks:
+        - address: 10.33.9.16
+          cidr: 10.33.9.0/26
+          label: mgmt
+        - address: 10.32.9.16
+          cidr: 10.32.9.0/26
+          label: ingress
+

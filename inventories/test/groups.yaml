@@ -1,0 +1,173 @@
+# ======================================================================
+# DONT CHANGE - generated from catalog and managed via pipeline
+# ======================================================================
+
+all:
+  children:
+    loadbalancers:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-lb-1: {}
+    postgreses:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-postgres-1: {}
+        test-postgres-2: {}
+        test-postgres-3: {}
+    telesto:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-postgres-1: {}
+        test-postgres-2: {}
+        test-postgres-3: {}
+        test-minio-1: {}
+        test-minio-2: {}
+        test-minio-3: {}
+        test-es-1: {}
+        test-es-2: {}
+        test-es-3: {}
+        test-cassandra-1: {}
+        test-cassandra-2: {}
+        test-cassandra-3: {}
+        test-worker-1: {}
+        test-worker-2: {}
+        test-worker-3: {}
+        test-worker-4: {}
+        test-worker-5: {}
+        test-worker-6: {}
+        test-fecp-1: {}
+        test-fecp-2: {}
+        test-fecp-3: {}
+    minios:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-minio-1: {}
+        test-minio-2: {}
+        test-minio-3: {}
+    elasticsearchs:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-es-1: {}
+        test-es-2: {}
+        test-es-3: {}
+    cassandras:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-cassandra-1: {}
+        test-cassandra-2: {}
+        test-cassandra-3: {}
+    cassandra_seeds:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-cassandra-1: {}
+        test-cassandra-2: {}
+    workernodes:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-1: {}
+        test-worker-2: {}
+        test-worker-3: {}
+        test-worker-4: {}
+        test-worker-5: {}
+        test-worker-6: {}
+        test-worker-10: {}
+        test-worker-11: {}
+        test-worker-12: {}
+    kubenodes:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-1: {}
+        test-worker-2: {}
+        test-worker-3: {}
+        test-worker-4: {}
+        test-worker-5: {}
+        test-worker-6: {}
+        test-fecp-1: {}
+        test-fecp-2: {}
+        test-fecp-3: {}
+        test-worker-7: {}
+        test-worker-8: {}
+        test-worker-9: {}
+        test-worker-10: {}
+        test-worker-11: {}
+        test-worker-12: {}
+    turns:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-1: {}
+    sfts:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-1: {}
+    ingresses:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-2: {}
+        test-worker-3: {}
+        test-worker-4: {}
+        test-worker-5: {}
+        test-worker-6: {}
+    controlplanes:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-fecp-1: {}
+        test-fecp-2: {}
+        test-fecp-3: {}
+        test-worker-7: {}
+        test-worker-8: {}
+        test-worker-9: {}
+    oberon:
+      vars:
+        ansible_group_priority: 10
+      hosts:
+        test-worker-7: {}
+        test-worker-8: {}
+        test-worker-9: {}
+        test-worker-10: {}
+        test-worker-11: {}
+        test-worker-12: {}
+    frontend:
+      hosts:
+        test-lb-1: {}
+        test-worker-1: {}
+        test-worker-2: {}
+        test-worker-3: {}
+        test-worker-4: {}
+        test-worker-5: {}
+        test-worker-6: {}
+        test-fecp-1: {}
+        test-fecp-2: {}
+        test-fecp-3: {}
+        test-worker-7: {}
+        test-worker-8: {}
+        test-worker-9: {}
+        test-worker-10: {}
+        test-worker-11: {}
+        test-worker-12: {}
+    persistence:
+      hosts:
+        test-postgres-1: {}
+        test-postgres-2: {}
+        test-postgres-3: {}
+        test-minio-1: {}
+        test-minio-2: {}
+        test-minio-3: {}
+        test-es-1: {}
+        test-es-2: {}
+        test-es-3: {}
+        test-cassandra-1: {}
+        test-cassandra-2: {}
+        test-cassandra-3: {}
