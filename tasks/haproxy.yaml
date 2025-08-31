@@ -1,51 +1,21 @@
 ---
-# HAProxy: preflight, compute bind address, packages, config, service
-
-# -------- Preflight: basic variables are sane
-- name: Preflight | Validate required variables (HAProxy)
+# -------- Preflight: minimal, task-relevante Checks (inkl. Interface)
+- name: Preflight | Minimal required variables (HAProxy)
   ansible.builtin.assert:
     that:
-      - groups['db'] is defined
-      - (groups['db'] | length) >= 1
+      - (groups['db'] | default([])) | length >= 1
       - haproxy_write_port is integer
       - haproxy_read_port is integer
       - haproxy_stats_port is integer
       - 1 <= (haproxy_write_port | int) <= 65535
       - 1 <= (haproxy_read_port | int) <= 65535
       - 1 <= (haproxy_stats_port | int) <= 65535
-      - (haproxy_write_port | int) != (haproxy_read_port | int)
-      - haproxy_runtime_socket_cfg | regex_search('^/.+\\.sock$')
-      - haproxy_runtime_socket_host | regex_search('^/.+\\.sock$')
-    fail_msg: >
-      HAProxy variables are missing/invalid. Check ports and socket paths in vars.yaml.
-    success_msg: HAProxy variables look sane.
-
-# -------- Optional: validate chosen bind interface and compute haproxy_bind_address
-- name: Preflight | Validate chosen HAProxy bind interface exists
-  when: haproxy_bind_interface is defined
-  vars:
-    _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
-    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
-    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
-    _ipv4_from_addrs: >-
-      {{
-        (_if.addresses | default({}) | dict2items
-          | map(attribute='key')
-          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
-          | list | first) | default(omit)
-      }}
-  ansible.builtin.assert:
-    that:
-      - ansible_facts.interfaces is defined
-      - haproxy_bind_interface in ansible_facts.interfaces
-      - _if is mapping
-      - (_ipv4_from_obj is defined) or (_ipv4_from_addrs is defined)
-    fail_msg: >
-      HAProxy bind interface {{ haproxy_bind_interface }} not found or has no IPv4.
-      Check the interface name and ensure facts are gathered.
-    success_msg: >-
-      HAProxy will bind on {{ haproxy_bind_interface }}
-      ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
+      - (haproxy_runtime_socket_cfg  | string) is match('^/.+')
+      - (haproxy_runtime_socket_host | string) is match('^/.+')
+      - hostvars[inventory_hostname]['ansible_' + haproxy_bind_interface] is defined
+      - hostvars[inventory_hostname]['ansible_' + haproxy_bind_interface]['ipv4'] is defined
+    fail_msg: "Preflight failed (HAProxy): check ports, socket paths and bind interface."
+    quiet: true
 
 - name: Compute HAProxy bind address
   vars:

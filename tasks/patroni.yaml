@@ -1,60 +1,18 @@
 ---
-# Patroni: preflight checks, repo setup, packages, config and service
-
-# -------- Preflight: basic variables are sane
-- name: Preflight | Validate required variables (Patroni)
+# -------- Preflight: minimal, task-relevante Checks
+- name: Preflight | Minimal required variables (Checkmk)
   ansible.builtin.assert:
     that:
-      - pg_version is integer
-      - pg_version | int >= 10
-      - postgres_port is integer
+      - (groups['db'] | default([])) | length >= 1
       - patroni_rest_port is integer
-      - patroni_raft_port is integer
-      - 1 <= (postgres_port | int) <= 65535
       - 1 <= (patroni_rest_port | int) <= 65535
-      - 1 <= (patroni_raft_port | int) <= 65535
-      - postgres_port | int not in [patroni_rest_port | int, patroni_raft_port | int]
-      - pg_cluster_scope | length > 0
-      - pg_namespace | length > 0
-      - pg_cluster_cidr is match('^\\d+\\.\\d+\\.\\d+\\.\\d+/\\d{1,2}$')
-      - pg_superuser.username | length > 0
-      - pg_superuser.password | length > 0
-      - pg_replication.username | length > 0
-      - pg_replication.password | length > 0
-      - groups['db'] is defined
-      - (groups['db'] | length) >= 1
-      - patroni_name | length > 0
-    fail_msg: >
-      One or more required Patroni variables are missing/invalid.
-      Please review vars.yaml.
-    success_msg: Patroni variables look sane.
-
-# -------- Optional: validate chosen bind interface and compute patroni_ip
-- name: Preflight | Validate chosen Patroni bind interface exists
-  when: patroni_bind_interface is defined
-  vars:
-    _if_key: "{{ 'ansible_' ~ patroni_bind_interface }}"
-    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
-    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
-    _ipv4_from_addrs: >-
-      {{
-        (_if.addresses | default({}) | dict2items
-          | map(attribute='key')
-          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
-          | list | first) | default(omit)
-      }}
-  ansible.builtin.assert:
-    that:
-      - ansible_facts.interfaces is defined
-      - patroni_bind_interface in ansible_facts.interfaces
-      - _if is mapping
-      - (_ipv4_from_obj is defined) or (_ipv4_from_addrs is defined)
-    fail_msg: >
-      Patroni bind interface {{ patroni_bind_interface }} not found or has no IPv4.
-      Check interface name and ensure facts are gathered.
-    success_msg: >-
-      Patroni will bind on {{ patroni_bind_interface }}
-      ({% if _ipv4_from_obj is defined %}{{ _ipv4_from_obj }}{% else %}{{ _ipv4_from_addrs }}{% endif %})
+      - (haproxy_runtime_socket_host | string) is match('^/.+')
+      - checkmk_warn_lag_bytes is integer
+      - checkmk_crit_lag_bytes is integer
+      - (checkmk_warn_lag_bytes | int) < (checkmk_crit_lag_bytes | int)
+      - (checkmk_local_dir | string) is match('^/.+')
+    fail_msg: "Preflight failed (Checkmk): check port, HAProxy socket, thresholds and target dir."
+    quiet: true
 
 - name: Compute Patroni bind address (patroni_ip)
   when: patroni_bind_interface is defined
@@ -91,7 +49,7 @@
   ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
     dest: /usr/share/keyrings/pgdg.asc
-    mode: '0644'
+    mode: "0644"
 
 - name: Apt | Convert key to GPG keyring
   ansible.builtin.command:
@@ -154,7 +112,7 @@
     dest: /etc/patroni/patroni.yml
     owner: postgres
     group: postgres
-    mode: '0644'
+    mode: "0644"
   notify: Restart patroni
 
 - name: Deploy systemd unit for Patroni
@@ -163,7 +121,7 @@
     dest: /etc/systemd/system/patroni.service
     owner: root
     group: root
-    mode: '0644'
+    mode: "0644"
   notify:
     - Systemd daemon-reload
     - Restart patroni
