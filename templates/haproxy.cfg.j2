@@ -29,10 +29,11 @@ frontend pg_write
 backend pg_leader
   option httpchk OPTIONS /master
   http-check expect status 200
-  default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
-{% for host in groups['postgreses'] %}
+  # schneller umklappen:
+  default-server port {{ postgres_port }} check inter 1s fastinter 200ms downinter 500ms fall 1 rise 2
+  {% for host in groups['postgreses'] %}
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
-{% endfor %}
+  {% endfor %}
 
 # Reads -> replicas
 frontend pg_read
@@ -45,10 +46,11 @@ backend pg_replicas
   balance roundrobin
   option httpchk OPTIONS /replica
   http-check expect status 200
-  default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
-{% for host in groups['postgreses'] %}
+  # schneller umklappen:
+  default-server port {{ postgres_port }} check inter 1s fastinter 200ms downinter 500ms fall 1 rise 2
+  {% for host in groups['postgreses'] %}
   server {{ hostvars[host].patroni_name }} {{ hostvars[host].patroni_ip }}:{{ postgres_port }} check port {{ patroni_rest_port }}
-{% endfor %}
+  {% endfor %}
 
 # simple HTTP stats
 listen stats
