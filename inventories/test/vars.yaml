@@ -88,7 +88,7 @@ all:
           }}
 
         # --- keepalived / VIP (optional) ---
-        keepalived_enabled: true
+        keepalived_enabled: false
         keepalived_interface: "{{ haproxy_bind_interface | default('enp1s0') }}"
         vip_address_cidr: "192.168.178.60/24"     # VIP + Präfix
         virtual_router_id: 51
