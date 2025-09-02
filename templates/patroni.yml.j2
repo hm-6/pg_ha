@@ -6,6 +6,20 @@ restapi:
   listen: "0.0.0.0:{{ patroni_rest_port }}"
   connect_address: "{{ patroni_ip }}:{{ patroni_rest_port }}"
 
+{#raft:#}
+{#  data_dir: /var/lib/postgresql/raft#}
+{#  self_addr: "{{ patroni_ip }}:{{ patroni_raft_port }}"#}
+{#  partner_addrs:#}
+{#{% for host in groups['postgreses'] if host != inventory_hostname %}#}
+{#    - "{{ hostvars[host].patroni_ip }}:{{ patroni_raft_port }}"#}
+{#{% endfor %}#}
+
+restapi:
+  listen: "0.0.0.0:{{ patroni_rest_port }}"
+  connect_address: "{{ patroni_ip }}:{{ patroni_rest_port }}"
+
+{# --- DCS Auswahl: raft (default) oder etcd3 --- #}
+{% if patroni_dcs_provider | default('raft') == 'raft' %}
 raft:
   data_dir: /var/lib/postgresql/raft
   self_addr: "{{ patroni_ip }}:{{ patroni_raft_port }}"
@@ -13,6 +27,11 @@ raft:
 {% for host in groups['postgreses'] if host != inventory_hostname %}
     - "{{ hostvars[host].patroni_ip }}:{{ patroni_raft_port }}"
 {% endfor %}
+{% else %}
+etcd3:
+  # Patroni erwartet "hosts" als Komma-separierte Liste
+  hosts: "{{ patroni_etcd_endpoints }}"
+{% endif %}
 
 bootstrap:
   dcs:
@@ -48,6 +67,13 @@ postgresql:
   connect_address: "{{ patroni_ip }}:{{ postgres_port }}"
   data_dir: "/var/lib/postgresql/{{ pg_version }}/patroni"
   bin_dir: "/usr/lib/postgresql/{{ pg_version }}/bin"
+
+  #  NEU: automatische Reparatur bei Timeline-Divergenz
+  use_pg_rewind: true
+  remove_data_directory_on_diverged_timelines: true
+  # (Optional, aber empfehlenswert, falls du Slots nutzt)
+  use_slots: true
+
   authentication:
     replication:
       username: "{{ pg_replication.username }}"

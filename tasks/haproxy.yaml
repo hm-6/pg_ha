@@ -19,6 +19,7 @@
 
 - name: Compute HAProxy bind address
   vars:
+    _vip_ip: "{{ (vip_address_cidr.split('/'))[0] if (keepalived_enabled | default(false)) else omit }}"
     _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
     _if: "{{ (haproxy_bind_interface is defined) | ternary(hostvars[inventory_hostname].get(_if_key, {}), {}) }}"
     _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
@@ -32,12 +33,17 @@
   ansible.builtin.set_fact:
     haproxy_bind_address: >-
       {{
-        ( _ipv4_from_obj
-          if (_ipv4_from_obj is defined)
-          else (_ipv4_from_addrs
-                  if (_ipv4_from_addrs is defined)
-                  else ansible_default_ipv4.address) )
+        (_vip_ip
+         if (_vip_ip is defined)
+         else (
+           _ipv4_from_obj
+           if (_ipv4_from_obj is defined)
+           else (_ipv4_from_addrs
+                   if (_ipv4_from_addrs is defined)
+                   else ansible_default_ipv4.address)
+         ))
       }}
+
 
 # -------- Packages
 - name: Packages | HAProxy and tools
@@ -45,6 +51,38 @@
     name: "{{ haproxy_packages + common_packages }}"
     state: present
     update_cache: true
+
+- name: Derive host IPv4 of haproxy_bind_interface
+  vars:
+    _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_if_key, {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.set_fact:
+    haproxy_host_ip: "{{ _ipv4_from_obj | default(_ipv4_from_addrs) | default(ansible_default_ipv4.address) }}"
+
+- name: Normalize haproxy bind addresses (list)
+  ansible.builtin.set_fact:
+    haproxy_bind_addresses: >-
+      {{
+        (haproxy_bind_addresses | default([]))
+        | union( [ (haproxy_bind_address | default('')) ] )
+        | map('trim')
+        | reject('equalto','')
+        | list
+      }}
+  when: haproxy_bind_addresses is not defined
+
+# Optional: Host-IP zusätzlich aufnehmen
+- name: Ensure host IP included in bind addresses
+  ansible.builtin.set_fact:
+    haproxy_bind_addresses: "{{ haproxy_bind_addresses + [ haproxy_host_ip ] | unique }}"
 
 # -------- Config template + service
 - name: Deploy HAProxy configuration (validated with -c)

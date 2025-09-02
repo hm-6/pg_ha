@@ -21,7 +21,9 @@ defaults
 
 # Writes -> leader
 frontend pg_write
-  bind {{ haproxy_bind_address }}:{{ haproxy_write_port }}
+{% for addr in haproxy_bind_addresses %}
+  bind {{ addr }}:{{ haproxy_write_port }}
+{% endfor %}
   default_backend pg_leader
 
 backend pg_leader
@@ -34,7 +36,9 @@ backend pg_leader
 
 # Reads -> replicas
 frontend pg_read
-  bind {{ haproxy_bind_address }}:{{ haproxy_read_port }}
+{% for addr in haproxy_bind_addresses %}
+  bind {{ addr }}:{{ haproxy_read_port }}
+{% endfor %}
   default_backend pg_replicas
 
 backend pg_replicas
@@ -48,7 +52,9 @@ backend pg_replicas
 
 # simple HTTP stats
 listen stats
-  bind {{ haproxy_bind_address }}:{{ haproxy_stats_port }}
+{% for addr in haproxy_bind_addresses %}
+  bind {{ addr }}:{{ haproxy_stats_port }}
+{% endfor %}
   mode http
   option httplog
   stats enable

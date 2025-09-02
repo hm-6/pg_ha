@@ -28,7 +28,7 @@ all:
         patroni_dcs:
           ttl: 30
           loop_wait: 10
-          retry_timeout: 10
+          retry_timeout: 30
           synchronous_mode: true
           synchronous_mode_strict: true
           synchronous_node_count: 1
@@ -64,3 +64,34 @@ all:
         - python3-pysyncobj
         haproxy_packages:
         - haproxy
+        # --- Patroni DCS Backend ---
+        patroni_dcs_provider: "raft"     # "raft" (default) oder "etcd"
+
+        # --- etcd Cluster (wenn patroni_dcs_provider=etcd) ---
+        etcd_enabled: true               # steuert Installation auf den postgreses-Hosts
+        etcd_cluster_name: "pg-ha"
+        etcd_client_port: 2379
+        etcd_peer_port: 2380
+        etcd_data_dir: "/var/lib/etcd"
+        # Interface/IP für etcd (default: Patroni-Interface/IP)
+        etcd_bind_interface: "{{ patroni_bind_interface | default('enp1s0') }}"
+
+        # Falls du externes etcd hast, setz das und lass etcd_enabled=false
+        # Liste der Endpunkte, die Patroni benutzt (String oder Liste)
+        patroni_etcd_endpoints: >-
+          {{
+            groups['postgreses']
+            | map('extract', hostvars, ['ansible_' ~ (etcd_bind_interface|default('enp1s0')), 'ipv4','address'])
+            | list
+            | map('regex_replace', '^(.*)$', '\\1:' ~ etcd_client_port|string)
+            | join(',')
+          }}
+
+        # --- keepalived / VIP (optional) ---
+        keepalived_enabled: true
+        keepalived_interface: "{{ haproxy_bind_interface | default('enp1s0') }}"
+        vip_address_cidr: "192.168.178.60/24"     # VIP + Präfix
+        virtual_router_id: 51
+        keepalived_auth_pass: "pgHAVIP"
+        # Prioritäten pro Host (höher = bevorzugt Master). Default: 100 + Index
+        keepalived_base_priority: 100

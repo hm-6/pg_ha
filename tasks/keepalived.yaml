@@ -1,0 +1,101 @@
+---
+# keepalived: VRRP-VIP für HAProxy (optional)
+
+- name: Preflight | keepalived only when requested
+  ansible.builtin.assert:
+    that:
+      - (keepalived_enabled | default(false)) in [true, false]
+    success_msg: "keepalived preflight ok."
+
+- name: Preflight | keepalived vars sane
+  when: keepalived_enabled | default(false)
+  ansible.builtin.assert:
+    that:
+      - vip_address_cidr is string and vip_address_cidr | regex_search('^\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+$')
+      - virtual_router_id is integer
+      - keepalived_interface is string
+      - keepalived_auth_pass | length >= 6
+    success_msg: "keepalived variables look sane."
+    fail_msg: "check keepalived variables."
+
+# IP/Prefix/VIP splitten
+- name: Compute VIP parameters
+  when: keepalived_enabled | default(false)
+  vars:
+    _parts: "{{ vip_address_cidr.split('/') }}"
+  ansible.builtin.set_fact:
+    vip_ip: "{{ _parts[0] }}"
+    vip_prefix: "{{ _parts[1] | int }}"
+
+# Interface-IP und Peers ermitteln (unicast VRRP ist robust in VMs)
+- name: Compute VRRP local IP and peers
+  when: keepalived_enabled | default(false)
+  vars:
+    _key: "{{ 'ansible_' ~ keepalived_interface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_key, {}) }}"
+    _my_ip: >-
+      {{
+        (_if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined)
+          else ansible_default_ipv4.address)
+      }}
+  ansible.builtin.set_fact:
+    vrrp_src_ip: "{{ _my_ip }}"
+    vrrp_peers: >-
+      {{
+        groups['postgreses']
+        | difference([inventory_hostname])
+        | map('extract', hostvars)
+        | map('extract', ['ansible_' ~ keepalived_interface, 'ipv4', 'address'])
+        | map('default', None)
+        | reject('equalto', None)
+        | list
+      }}
+
+# Priorität berechnen (oder per hostvar keepalived_priority vorgeben)
+- name: Compute keepalived priority
+  when: keepalived_enabled | default(false)
+  ansible.builtin.set_fact:
+    keepalived_priority: >-
+      {{
+        (hostvars[inventory_hostname].keepalived_priority
+          | default(keepalived_base_priority + (groups['postgreses'].index(inventory_hostname) | int)))
+      }}
+
+- name: Install keepalived
+  when: keepalived_enabled | default(false)
+  ansible.builtin.apt:
+    name: keepalived
+    state: present
+    update_cache: true
+
+- name: Enable non-local bind (so HAProxy can start before VIP)
+  when: keepalived_enabled | default(false)
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_nonlocal_bind
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Render keepalived.conf
+  when: keepalived_enabled | default(false)
+  ansible.builtin.template:
+    src: templates/keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+  register: keepalived_cfg
+
+- name: Enable & start keepalived
+  when: keepalived_enabled | default(false)
+  ansible.builtin.service:
+    name: keepalived
+    state: started
+    enabled: true
+
+- name: Reload keepalived if config changed
+  when: (keepalived_enabled | default(false)) and keepalived_cfg.changed
+  ansible.builtin.service:
+    name: keepalived
+    state: reloaded

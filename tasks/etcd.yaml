@@ -1,0 +1,109 @@
+---
+# etcd: optionaler etcd-Cluster auf denselben Nodes wie Patroni/HAProxy
+
+- name: Preflight | etcd only when requested
+  ansible.builtin.assert:
+    that:
+      - patroni_dcs_provider in ['raft','etcd']
+      - (patroni_dcs_provider == 'raft') or (etcd_enabled | default(true))
+    success_msg: "etcd preflight ok (or not needed)."
+    fail_msg: "etcd requested but etcd_enabled=false"
+
+- name: Preflight | etcd variables sane
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.assert:
+    that:
+      - etcd_client_port is integer
+      - etcd_peer_port is integer
+      - 1 <= (etcd_client_port|int) <= 65535
+      - 1 <= (etcd_peer_port|int) <= 65535
+      - etcd_data_dir is string and etcd_data_dir | regex_search('^/.+')
+    success_msg: "etcd variables look sane."
+
+# IP der gewünschten etcd-Schnittstelle ermitteln
+- name: Compute etcd bind address
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  vars:
+    _iface: "{{ etcd_bind_interface | default(patroni_bind_interface | default('enp1s0')) }}"
+    _key: "{{ 'ansible_' ~ _iface }}"
+    _if: "{{ hostvars[inventory_hostname].get(_key, {}) }}"
+    _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
+    _ipv4_from_addrs: >-
+      {{
+        (_if.addresses | default({}) | dict2items
+          | map(attribute='key')
+          | select('match','^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+          | list | first) | default(omit)
+      }}
+  ansible.builtin.set_fact:
+    etcd_bind_ip: >-
+      {{
+        ( _ipv4_from_obj
+          if (_ipv4_from_obj is defined)
+          else (_ipv4_from_addrs
+                  if (_ipv4_from_addrs is defined)
+                  else ansible_default_ipv4.address) )
+      }}
+
+# Initial-Cluster-Zeichenkette bauen
+- name: Build etcd initial cluster string
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.set_fact:
+    etcd_initial_cluster: >-
+      {%- set peers = [] -%}
+      {%- set iface = etcd_bind_interface | default(patroni_bind_interface | default('enp1s0')) -%}
+      {%- for h in groups['postgreses'] -%}
+        {%- set has_if = hostvars[h]['ansible_' ~ iface] is defined -%}
+        {%- set ip = (hostvars[h]['ansible_' ~ iface].ipv4.address
+                       if has_if and (hostvars[h]['ansible_' ~ iface].ipv4 is defined)
+                       else hostvars[h].ansible_default_ipv4.address) -%}
+        {%- set _ = peers.append(h ~ '=http://' ~ ip ~ ':' ~ (etcd_peer_port|string)) -%}
+      {%- endfor -%}
+      {{ peers | join(',') }}
+
+# Pakete installieren (Ubuntu: Paketname 'etcd')
+- name: Install etcd
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.apt:
+    name:
+      - etcd
+    state: present
+    update_cache: true
+
+# Datenverzeichnis
+- name: Ensure etcd data dir exists
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.file:
+    path: "{{ etcd_data_dir }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0700'
+
+# Ubuntu-Unit liest /etc/default/etcd (Environment)
+- name: Render /etc/default/etcd
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.copy:
+    dest: /etc/default/etcd
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      ETCD_NAME="{{ inventory_hostname }}"
+      ETCD_DATA_DIR="{{ etcd_data_dir }}"
+      ETCD_INITIAL_CLUSTER_STATE="new"
+      ETCD_INITIAL_CLUSTER_TOKEN="{{ etcd_cluster_name }}"
+      ETCD_LISTEN_CLIENT_URLS="http://{{ etcd_bind_ip }}:{{ etcd_client_port }}"
+      ETCD_ADVERTISE_CLIENT_URLS="http://{{ etcd_bind_ip }}:{{ etcd_client_port }}"
+      ETCD_LISTEN_PEER_URLS="http://{{ etcd_bind_ip }}:{{ etcd_peer_port }}"
+      ETCD_INITIAL_ADVERTISE_PEER_URLS="http://{{ etcd_bind_ip }}:{{ etcd_peer_port }}"
+      ETCD_INITIAL_CLUSTER="{{ etcd_initial_cluster }}"
+  notify: Restart etcd
+
+# Service aktivieren/starten
+- name: Enable & start etcd
+  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  ansible.builtin.service:
+    name: etcd
+    state: started
+    enabled: true
