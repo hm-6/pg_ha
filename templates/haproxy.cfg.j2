@@ -25,7 +25,7 @@ frontend pg_write
   default_backend pg_leader
 
 backend pg_leader
-  option httpchk GET /master
+  option httpchk OPTIONS /master
   http-check expect status 200
   default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
 {% for host in groups['postgreses'] %}
@@ -39,7 +39,7 @@ frontend pg_read
 
 backend pg_replicas
   balance roundrobin
-  option httpchk GET /replica
+  option httpchk OPTIONS /replica
   http-check expect status 200
   default-server port {{ postgres_port }} check inter 2s fall 3 rise 2
 {% for host in groups['postgreses'] %}
