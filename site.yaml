@@ -1,24 +1,6 @@
 ---
 # Main playbook: deploy Patroni cluster nodes, HAProxy and Checkmk (no roles)
 
-# etcd (nur wenn etcd_enabled)
-- name: etcd (optional)
-  hosts: postgreses
-  become: true
-  gather_facts: true
-  tasks:
-    - name: Include etcd tasks
-      ansible.builtin.import_tasks: tasks/etcd.yaml
-  handlers:
-    - name: Systemd daemon-reload
-      ansible.builtin.systemd:
-        daemon_reload: true
-
-    - name: Restart etcd
-      ansible.builtin.service:
-        name: etcd
-        state: restarted
-
 - name: DB nodes (PostgreSQL + Patroni)
   hosts: postgreses
   become: true
@@ -37,6 +19,24 @@
   tasks:
     - name: Include Patroni tasks
       ansible.builtin.import_tasks: tasks/patroni.yaml
+
+# etcd (nur wenn etcd_enabled)
+- name: etcd (optional)
+  hosts: postgreses
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Include etcd tasks
+      ansible.builtin.import_tasks: tasks/etcd.yaml
+  handlers:
+    - name: Systemd daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart etcd
+      ansible.builtin.service:
+        name: etcd
+        state: restarted
 
 - name: HAProxy
   hosts: postgreses

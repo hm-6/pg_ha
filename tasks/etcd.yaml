@@ -61,14 +61,14 @@
       {%- endfor -%}
       {{ peers | join(',') }}
 
-# Pakete installieren (Ubuntu: Paketname 'etcd')
-- name: Install etcd
-  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
-  ansible.builtin.apt:
-    name:
-      - etcd
-    state: present
-    update_cache: true
+# # Pakete installieren (Ubuntu: Paketname 'etcd')
+# - name: Install etcd
+#   when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+#   ansible.builtin.apt:
+#     name:
+#       - etcd
+#     state: present
+#     update_cache: true
 
 # Datenverzeichnis
 - name: Ensure etcd data dir exists

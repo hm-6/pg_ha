@@ -57,6 +57,7 @@ all:
         - lsb-release
         - jq
         - socat
+        - etcd
         db_packages:
         - postgresql-{{ pg_version }}
         - patroni
