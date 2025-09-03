@@ -63,10 +63,12 @@ all:
         - patroni
         - python3-psycopg2
         - python3-pysyncobj
+        - python3-etcd3gw      # <— NEU: Patroni DCS-Treiber für etcd v3
+
         haproxy_packages:
         - haproxy
         # --- Patroni DCS Backend ---
-        patroni_dcs_provider: "etcd"     # "raft" (default) oder "etcd"
+        patroni_dcs_provider: "etcd3"     # "raft" (default) oder "etcd"
 
         # --- etcd Cluster (wenn patroni_dcs_provider=etcd) ---
         etcd_enabled: true               # steuert Installation auf den postgreses-Hosts
@@ -77,13 +79,11 @@ all:
         # Interface/IP für etcd (default: Patroni-Interface/IP)
         etcd_bind_interface: "{{ patroni_bind_interface | default('enp1s0') }}"
 
-        # Falls du externes etcd hast, setz das und lass etcd_enabled=false
-        # Liste der Endpunkte, die Patroni benutzt (String oder Liste)
+        # Patroni etcd Endpunkte als Liste (nicht als kommagetrennter String!)
         patroni_etcd_endpoints: >-
           {{
             groups['postgreses']
-            | map('extract', hostvars, ['ansible_' ~ (etcd_bind_interface|default('enp1s0')), 'ipv4','address'])
+            | map('extract', hostvars, ['ansible_' ~ (etcd_bind_interface|default('enp1s0')), 'ipv4', 'address'])
+            | map('regex_replace', '$', ':' ~ (etcd_client_port|string))
             | list
-            | map('regex_replace', '^(.*)$', '\\1:' ~ etcd_client_port|string)
-            | join(',')
           }}

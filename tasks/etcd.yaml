@@ -4,13 +4,13 @@
 - name: Preflight | etcd only when requested
   ansible.builtin.assert:
     that:
-      - patroni_dcs_provider in ['raft','etcd']
+      - patroni_dcs_provider in ['raft','etcd3']
       - (patroni_dcs_provider == 'raft') or (etcd_enabled | default(true))
     success_msg: "etcd preflight ok (or not needed)."
     fail_msg: "etcd requested but etcd_enabled=false"
 
 - name: Preflight | etcd variables sane
-  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  when: patroni_dcs_provider == 'etcd3' and (etcd_enabled | default(true))
   ansible.builtin.assert:
     that:
       - etcd_client_port is integer
@@ -22,7 +22,7 @@
 
 # IP der gewünschten etcd-Schnittstelle ermitteln
 - name: Compute etcd bind address
-  when: patroni_dcs_provider == 'etcd' and (etcd_enabled | default(true))
+  when: patroni_dcs_provider == 'etcd3' and (etcd_enabled | default(true))
   vars:
     _iface: "{{ etcd_bind_interface | default(patroni_bind_interface | default('enp1s0')) }}"
     _key: "{{ 'ansible_' ~ _iface }}"

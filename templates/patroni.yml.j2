@@ -28,7 +28,7 @@ raft:
     - "{{ hostvars[host].patroni_ip }}:{{ patroni_raft_port }}"
 {% endfor %}
 {% else %}
-etcd:
+etcd3:
   # Patroni erwartet "hosts" als Komma-separierte Liste
   hosts: "{{ patroni_etcd_endpoints }}"
 {% endif %}
