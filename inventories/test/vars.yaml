@@ -65,7 +65,7 @@ all:
         haproxy_packages:
         - haproxy
         # --- Patroni DCS Backend ---
-        patroni_dcs_provider: "raft"     # "raft" (default) oder "etcd"
+        patroni_dcs_provider: "etcd"     # "raft" (default) oder "etcd"
 
         # --- etcd Cluster (wenn patroni_dcs_provider=etcd) ---
         etcd_enabled: true               # steuert Installation auf den postgreses-Hosts

@@ -9,6 +9,15 @@
   tasks:
     - name: Include etcd tasks
       ansible.builtin.import_tasks: tasks/etcd.yaml
+  handlers:
+    - name: Systemd daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart etcd
+      ansible.builtin.service:
+        name: etcd
+        state: restarted
 
 - name: DB nodes (PostgreSQL + Patroni)
   hosts: postgreses
