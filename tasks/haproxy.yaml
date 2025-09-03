@@ -19,7 +19,6 @@
 
 - name: Compute HAProxy bind address
   vars:
-    _vip_ip: "{{ (vip_address_cidr.split('/'))[0] if (keepalived_enabled | default(false)) else omit }}"
     _if_key: "{{ 'ansible_' ~ haproxy_bind_interface }}"
     _if: "{{ (haproxy_bind_interface is defined) | ternary(hostvars[inventory_hostname].get(_if_key, {}), {}) }}"
     _ipv4_from_obj: "{{ _if.ipv4.address if (_if.ipv4 is defined and _if.ipv4.address is defined) else omit }}"
@@ -33,17 +32,14 @@
   ansible.builtin.set_fact:
     haproxy_bind_address: >-
       {{
-        (_vip_ip
-         if (_vip_ip is defined)
-         else (
+         (
            _ipv4_from_obj
            if (_ipv4_from_obj is defined)
            else (_ipv4_from_addrs
                    if (_ipv4_from_addrs is defined)
                    else ansible_default_ipv4.address)
-         ))
+         )
       }}
-
 
 # -------- Packages
 - name: Packages | HAProxy and tools
@@ -91,8 +87,8 @@
     dest: /etc/haproxy/haproxy.cfg
     owner: root
     group: root
-    mode: '0644'
-    validate: 'haproxy -c -f %s'
+    mode: "0644"
+    validate: "haproxy -c -f %s"
   notify: Reload haproxy
 
 - name: Enable & start HAProxy

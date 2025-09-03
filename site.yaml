@@ -29,15 +29,6 @@
     - name: Include Patroni tasks
       ansible.builtin.import_tasks: tasks/patroni.yaml
 
-# keepalived (optional)
-- name: keepalived VIP (optional)
-  hosts: postgreses
-  become: true
-  gather_facts: true
-  tasks:
-    - name: Include keepalived tasks
-      ansible.builtin.import_tasks: tasks/keepalived.yaml
-
 - name: HAProxy
   hosts: postgreses
   become: true

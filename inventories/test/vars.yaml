@@ -86,12 +86,3 @@ all:
             | map('regex_replace', '^(.*)$', '\\1:' ~ etcd_client_port|string)
             | join(',')
           }}
-
-        # --- keepalived / VIP (optional) ---
-        keepalived_enabled: false
-        keepalived_interface: "{{ haproxy_bind_interface | default('enp1s0') }}"
-        vip_address_cidr: "192.168.178.60/24"     # VIP + Präfix
-        virtual_router_id: 51
-        keepalived_auth_pass: "pgHAVIP"
-        # Prioritäten pro Host (höher = bevorzugt Master). Default: 100 + Index
-        keepalived_base_priority: 100
